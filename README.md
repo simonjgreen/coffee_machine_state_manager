@@ -1,5 +1,4 @@
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)]
-(https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/simonjgreen/coffee-machine-state-manager/main/blueprints/automation/simongreen/coffee_machine_state_manager.yaml)
+[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/simonjgreen/coffee-machine-state-manager/main/blueprints/automation/simongreen/coffee_machine_state_manager.yaml)
 
 # Coffee Machine State Manager (Home Assistant Blueprint)
 

@@ -1,0 +1,210 @@
+blueprint:
+  name: Coffee Machine State Manager (Power Derived + SwitchBot Toggle)
+  description: >
+    Maintains helper entities to track coffee machine state (Off/Heating/Ready)
+    based on smart plug power draw, and toggles a SwitchBot (or similar switch)
+    when a "desired power" boolean changes.
+
+    You must create two helpers:
+    - input_boolean (desired power)
+    - input_select (derived state) with options: Off, Heating, Ready
+
+  domain: automation
+
+  input:
+    power_sensor:
+      name: Power sensor
+      description: Smart plug power sensor (W).
+      selector:
+        entity:
+          domain: sensor
+
+    switchbot_switch:
+      name: Switch to toggle power button (SwitchBot)
+      description: Switch entity that toggles the coffee machine power button.
+      selector:
+        entity:
+          domain: switch
+
+    desired_power_boolean:
+      name: Desired power helper (input_boolean)
+      description: Helper that represents whether the user wants the machine on.
+      selector:
+        entity:
+          domain: input_boolean
+
+    derived_state_select:
+      name: Derived state helper (input_select)
+      description: Helper that shows Off/Heating/Ready.
+      selector:
+        entity:
+          domain: input_select
+
+    off_below_w:
+      name: Off below (W)
+      description: Power draw below this is treated as Off.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 500
+          step: 0.5
+          mode: box
+          unit_of_measurement: W
+
+    heating_above_w:
+      name: Heating above (W)
+      description: Power draw above this is treated as Heating.
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 3000
+          step: 1
+          mode: box
+          unit_of_measurement: W
+
+    ready_for_seconds:
+      name: Ready must hold for (seconds)
+      description: Debounce for Ready state.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 1
+          mode: box
+          unit_of_measurement: s
+
+    off_for_seconds:
+      name: Off must hold for (seconds)
+      description: Optional debounce for Off to avoid brief dips.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+          step: 1
+          mode: box
+          unit_of_measurement: s
+
+mode: single
+
+variables:
+  power_sensor: !input power_sensor
+  switchbot_switch: !input switchbot_switch
+  desired_power_boolean: !input desired_power_boolean
+  derived_state_select: !input derived_state_select
+  off_below_w: !input off_below_w
+  heating_above_w: !input heating_above_w
+  ready_for_seconds: !input ready_for_seconds
+  off_for_seconds: !input off_for_seconds
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input power_sensor
+    below: !input off_below_w
+    for:
+      seconds: !input off_for_seconds
+    id: derived_off
+
+  - platform: numeric_state
+    entity_id: !input power_sensor
+    above: !input off_below_w
+    below: !input heating_above_w
+    for:
+      seconds: !input ready_for_seconds
+    id: derived_ready
+
+  - platform: numeric_state
+    entity_id: !input power_sensor
+    above: !input heating_above_w
+    id: derived_heating
+
+  - platform: state
+    entity_id: !input desired_power_boolean
+    from: "off"
+    to: "on"
+    id: boolean_on
+
+  - platform: state
+    entity_id: !input desired_power_boolean
+    from: "on"
+    to: "off"
+    id: boolean_off
+
+# Prevents double-toggling when the boolean is being "corrected" by derived power state.
+# - If user turns boolean ON but state isn't Off, ignore (already on).
+# - If user turns boolean OFF while state is Off, ignore (already off).
+condition:
+  - condition: not
+    conditions:
+      - condition: or
+        conditions:
+          - condition: and
+            conditions:
+              - condition: trigger
+                id: boolean_on
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: !input derived_state_select
+                    state: "Off"
+          - condition: and
+            conditions:
+              - condition: trigger
+                id: boolean_off
+              - condition: state
+                entity_id: !input derived_state_select
+                state: "Off"
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: derived_off
+        sequence:
+          - service: input_select.select_option
+            target:
+              entity_id: !input derived_state_select
+            data:
+              option: "Off"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input desired_power_boolean
+
+      - conditions:
+          - condition: trigger
+            id: derived_heating
+        sequence:
+          - service: input_select.select_option
+            target:
+              entity_id: !input derived_state_select
+            data:
+              option: "Heating"
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input desired_power_boolean
+
+      - conditions:
+          - condition: trigger
+            id: derived_ready
+        sequence:
+          - service: input_select.select_option
+            target:
+              entity_id: !input derived_state_select
+            data:
+              option: "Ready"
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input desired_power_boolean
+
+      - conditions:
+          - condition: trigger
+            id:
+              - boolean_on
+              - boolean_off
+        sequence:
+          - service: switch.toggle
+            target:
+              entity_id: !input switchbot_switch
